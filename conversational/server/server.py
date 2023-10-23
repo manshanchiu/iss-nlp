@@ -6,6 +6,10 @@ import gsheet
 import openai
 import pandas as pd
 from dotenv import load_dotenv
+import torch
+from transformers import BertForSequenceClassification
+import numpy as np
+from transformers import BertTokenizer
 load_dotenv()
 
 
@@ -18,7 +22,8 @@ gsheet_data_dict = list[dict]
 countries = list[str]
 gsheet_datadf = pd.DataFrame()
 paramFormat = {
-    "country": "country code"
+    "country": "country code",
+    "model_question": "input for model",
 }
 sentimentMapping = {
     "1": "Very Unhappy",
@@ -27,6 +32,8 @@ sentimentMapping = {
     "4": "Happy",
     "5": "Very Happy"
 }
+model=None
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
 
 def number_of_reviews_from_country(params:dict):
     count = 0
@@ -72,6 +79,11 @@ def get_country_sentiment_distribution_with_percentage(params:dict):
     for key in sentiment.keys():
         out += f"{key}: {sentimentAcutal[key]} ({sentiment[key]}%), "
     return out
+
+
+def issue_type_prediction(params:dict):
+    return predict_issue_type(params["model_question"])
+
 
 async def handle_message(websocket, path):
     print("WebSocket connection established")
@@ -138,6 +150,7 @@ def askGPT(question):
                     6. get_number_of_issue_types_from_country -> return number of issue types from a country
                     7. get_sentiment_distribution_with_percentage -> return sentiment distribution
                     8. get_country_sentiment_distribution_with_percentage -> return sentiment distribution from a country
+                    9. issue_type_prediction -> use the model to prediction the issue type based on the user input. The user input should be put in params.model_question
                     Help me convert the contry to the list of country code here as well: {countries}
                     """},
             {"role": "user", "content": question},
@@ -160,6 +173,47 @@ def gptResponse(question,data):
         ]
     )
     return response["choices"][0]["message"]["content"]
+
+def load_issue_type_model():
+    model = BertForSequenceClassification.from_pretrained("bert-base-uncased",num_labels=4,output_attentions = False,output_hidden_states = False)
+    model.load_state_dict(torch.load('bert-fine-tuning/fine_tuned_model.pt',map_location=torch.device('cpu') ))
+    return model
+
+
+def predict_issue_type(question):
+    input_ids = []
+    attention_masks = []
+    encoded_dict = tokenizer.encode_plus(
+                            question,                      # Sentence to encode.
+                            add_special_tokens = True, # Add '[CLS]' and '[SEP]'
+                            max_length = 512,           # Pad & truncate all sentences.
+                            truncation = True,
+                            padding = 'max_length',
+                            return_attention_mask = True,   # Construct attn. masks.
+                            return_tensors = 'pt',     # Return pytorch tensors.
+                    )
+    # Add the encoded sentence to the list.
+    input_ids.append(encoded_dict['input_ids'])
+
+    # And its attention mask (simply differentiates padding from non-padding).
+    attention_masks.append(encoded_dict['attention_mask'])
+    input_ids = torch.cat(input_ids, dim=0)
+    attention_masks = torch.cat(attention_masks, dim=0)
+
+    outputs = model(input_ids,
+                                token_type_ids=None,
+                                attention_mask=attention_masks)
+
+    issuetypes = ['content-clarity', 'enquiries-account', 
+        'technical-service unavailable', 
+        'technical-logging-authentication-token',
+        ]
+    print(outputs.logits.detach().cpu().numpy().tolist())
+    predicted = outputs.logits.detach().cpu().numpy().tolist()[0]
+    print(predicted)
+    print(np.argmax(predicted))
+    print(f'Label: {issuetypes[np.argmax(predicted)]}')
+    return issuetypes[np.argmax(predicted)]
 # Start WebSocket server
 async def start_server():
     async with websockets.serve(handle_message, os.environ['HOST'], os.environ['PORT']):
@@ -183,4 +237,9 @@ if __name__ == "__main__":
     gsheet_datadf = df
     # get unique values of header "Country"
     countries = df["country"].unique().tolist()
+
+    # load mode
+    model = load_issue_type_model()
+    model.eval()
+
     asyncio.run(start_server())
