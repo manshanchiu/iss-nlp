@@ -1,0 +1,7 @@
+gspread
+openai
+oauth2client
+websockets
+tiktoken
+python-dotenv
+pandas

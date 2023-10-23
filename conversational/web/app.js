@@ -10,7 +10,22 @@ const retrievedItem = document.querySelector("#retrieved-item");
 let resultFile = "";
 let _socket = null;
 
-initSocket()
+const myMessageBlock = `<li class="clearfix">
+<div class="message-data text-right">
+  <span class="message-data-time">{{time}}, Today</span>
+  <img src="https://bootdey.com/img/Content/avatar/avatar7.png" alt="avatar">
+</div>
+<div class="message other-message float-right">{{message}}</div>
+</li>`
+
+const botResponseBlock = `<li class="clearfix">
+<div class="message-data">
+  <span class="message-data-time">{{time}}, Today</span>
+</div>
+<div class="message my-message">{{message}}</div>
+</li>`
+
+// initSocket()
 
 // File Upload Handler
 function handleFileUpload() {
@@ -24,86 +39,19 @@ function handleFileUpload() {
   reader.readAsDataURL(file);
 }
 
-// OCR Handler
-async function handleOCR() {
-  // build input
-  document.getElementById("loading-overlay").style.display = "block";
-  let base64Image = previewImage.src.split(",")[1];
-  const size = getByteSize(base64Image);
-  console.log(size);
-  const id = guidGenerator();
-  const link = sheetInput.value;
-  const limitSize = 500000;
-  if (size > limitSize) {
-    const batches = Math.ceil(size / limitSize);
-    console.log(batches);
-    const splitLen = Math.floor(base64Image.length / batches);
-    console.log(splitLen);
-    for (let i = 0; i < batches; i++) {
-      const _image = base64Image.substring(i * splitLen, (i + 1) * splitLen);
-      let proceed = false;
-      if (i == batches - 1) {
-        proceed = true;
-      }
-      console.log("send");
-      console.log(proceed);
-      await sendImage(_image, id, link, proceed);
-    }
-  } else {
-    await sendImage(base64Image, id, link, true);
-  }
-  // const input = {
-  //     "id": ""
-  //     "image": previewImage.src.split(",")[1],
-  //     "link": sheetInput.value
-  // }
-  // console.log(input)
-  // document.getElementById("loading-overlay").style.display = "block";
-  // await socket.send(JSON.stringify(input));
-}
-
 // Event Listeners
-fileInput.addEventListener("change", handleFileUpload);
-recognizeBtn.addEventListener("click", handleOCR);
+// fileInput.addEventListener("change", handleFileUpload);
+// recognizeBtn.addEventListener("click", handleOCR);
 
-async function sendImage(image, id, link, proceed) {
+async function sendMessage(message) {
   const input = {
-    id: id,
-    image: image,
-    link: link,
-    proceed: proceed,
+    message
   };
   await _socket.send(JSON.stringify(input));
 }
 
-function guidGenerator() {
-  var S4 = function () {
-    return (((1 + Math.random()) * 0x10000) | 0).toString(16).substring(1);
-  };
-  return (
-    S4() +
-    S4() +
-    "-" +
-    S4() +
-    "-" +
-    S4() +
-    "-" +
-    S4() +
-    "-" +
-    S4() +
-    S4() +
-    S4()
-  );
-}
-
-function getByteSize(text) {
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(text);
-  const sizeInBytes = bytes.length;
-  return sizeInBytes;
-}
-
 function initSocket() {
+  console.log("Initializing WebSocket connection");
   const socket = new WebSocket(`ws://${config.host}:${config.port}`);
 
 
@@ -141,72 +89,45 @@ function initSocket() {
 function listenToAll(socket) {
   _socket = socket
   socket.onmessage = (event) => {
-    // Display OCR result
+    // Display gpt result
     document.getElementById("loading-overlay").style.display = "none";
     console.log(event);
     let result = JSON.parse(event.data);
-    const foundItem = result["found_row"];
-    const ocrRawData = result["ocr_result"];
-    ocrData = ocrRawData[0];
-    console.log(ocrData);
-  
-    if (JSON.stringify(foundItem) != "{}") {
-      let outputText = "";
-      for (key in foundItem) {
-        outputText += `${key}: ${foundItem[key]}<br>`;
-      }
-      retrievedItem.innerHTML = outputText;
-      retrievedItem.style.color = "black";
-    } else {
-      retrievedItem.innerHTML = "No item found, please take another photo.";
-      retrievedItem.style.color = "red";
-    }
-    //   extractedText.innerHTML = event.data.replace(/\n/g, '<br>');
-    // const imageWidth = previewImage.naturalWidth;
-    // const imageHeight = previewImage.naturalHeight;
-  
-    // Create overlay element
-    const overlay = document.getElementById("overlay");
-    while (overlay.lastElementChild) {
-      overlay.removeChild(overlay.lastElementChild);
-    }
-    console.log(ocrData);
-    // Loop through OCR data and create bounding boxes for each word
-    ocrData.forEach((res) => {
-      const [text, confidence] = res[1];
-      let resultText = document.createElement("div");
-      resultText.classList.add("result-text");
-      resultText.innerHTML = `${text} (${confidence}) `;
-      // resultContainer.appendChild(resultText);
-      overlay.appendChild(resultText);
-    });
-  
-    // ocrData.text.forEach((text, index) => {
-    //   if (ocrData.conf[index] > -1) {
-    //     // Create bounding box
-    //     const box = document.createElement("div");
-    //     box.className = "box";
-    //     box.style.left = `${ocrData.left[index]}px`;
-    //     box.style.top = `${ocrData.top[index]}px`;
-    //     box.style.width = `${ocrData.width[index]}px`;
-    //     box.style.height = `${ocrData.height[index]}px`;
-    //     // box.innerText = text;
-    //     overlay.appendChild(box);
-    //     let resultText = document.createElement("div");
-    //     resultText.classList.add("result-text");
-    //     resultText.style.left = ocrData.left[index] + "px";
-    //     resultText.style.top = ocrData.top[index] + "px";
-    //     resultText.innerHTML = text;
-    //     // resultContainer.appendChild(resultText);
-    //     overlay.appendChild(resultText);
-    //   }
-    // });
-  
-    // // Scale and position overlay element to match image
-    // overlay.style.width = `${imageWidth}px`;
-    // overlay.style.height = `${imageHeight}px`;
-    // overlay.style.transform = `translate(-50%, -50%) translate(${
-    //   imageWidth / 2
-    // }px, ${imageHeight / 2}px)`;
+    const m = result["message"];
+    $("#message_box").append(botResponseBlock.replace("{{message}}",m).replace("{{time}}",getDisplayTime()))
+    scrollToBottom()
   };
+}
+
+function scrollToBottom() {
+  $(".chat-history")[0].scrollTo(0, $(".chat-history")[0].scrollHeight);
+}
+
+initSocket()
+
+$("#submit").on("click",function() {
+  if ($("#message").val() != "") {
+      document.getElementById("loading-overlay").style.display = "block";
+      sendMessage($("#message").val())
+      $("#message_box").append(myMessageBlock.replace("{{message}}",$("#message").val()).replace("{{time}}",getDisplayTime()))
+      scrollToBottom()
+      $("#message").val("")
+  }
+});
+
+document.addEventListener("keydown", function(event) {
+  let key = event.key;
+  if (key == "Enter") {
+      $("#submit").click();
+  }
+});
+
+const getDisplayTime = () => {
+  let date = new Date();
+  const result = date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "numeric",
+    hour12: true,
+   });
+  return result;
 }
