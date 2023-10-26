@@ -176,7 +176,7 @@ def gptResponse(question,data):
 
 def load_issue_type_model():
     model = BertForSequenceClassification.from_pretrained("bert-base-uncased",num_labels=4,output_attentions = False,output_hidden_states = False)
-    model.load_state_dict(torch.load('bert-fine-tuning/fine_tuned_model.pt',map_location=torch.device('cpu') ))
+    model.load_state_dict(torch.load('model_training/output_models/fine_tuned_issuetype_model.pt',map_location=torch.device('cpu') ))
     return model
 
 
